@@ -5,44 +5,44 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.assets import router as assets_router
+from backend.app.api.whatsapp import router as whatsapp_router
+
 from backend.app.db.session import Base, engine
 from backend.app.models.assets import Asset
 
 
-# ============================================================
-# DATABASE
-# ============================================================
+# ---------------------------------------------------------
+# Database initialization
+# ---------------------------------------------------------
 
 Base.metadata.create_all(bind=engine)
 
 
-# ============================================================
-# FASTAPI APPLICATION
-# ============================================================
+# ---------------------------------------------------------
+# FastAPI application
+# ---------------------------------------------------------
 
 app = FastAPI(
     title="Asset & Warranty Vault",
-    description=(
-        "Digital asset, receipt, warranty "
-        "and maintenance management system."
-    ),
+    description="Digital asset, receipt, warranty and maintenance management system.",
     version="0.1.0"
 )
 
 
-# ============================================================
-# API ROUTES
-# ============================================================
+# ---------------------------------------------------------
+# API routers
+# ---------------------------------------------------------
 
 app.include_router(assets_router)
 
+app.include_router(whatsapp_router)
 
-# ============================================================
-# FRONTEND
-# ============================================================
+
+# ---------------------------------------------------------
+# Frontend
+# ---------------------------------------------------------
 
 FRONTEND_DIR = Path("frontend")
-
 
 app.mount(
     "/static",
@@ -53,19 +53,17 @@ app.mount(
 
 @app.get("/", include_in_schema=False)
 def serve_frontend():
-
     return FileResponse(
         FRONTEND_DIR / "index.html"
     )
 
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
+# ---------------------------------------------------------
+# Health check
+# ---------------------------------------------------------
 
 @app.get("/health")
 def health_check():
-
     return {
         "status": "healthy"
     }
