@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Asset Vault</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+
+</head>
+
+
+<body>
+
+    <div class="app-container">
+
+
+        <!-- =========================================
+             SIDEBAR
+             ========================================= -->
+
+        <aside class="sidebar">
+
+            <div class="sidebar-logo">
+
+                <div class="logo-icon">
+                    A
+                </div>
+
+                <div>
+
+                    <h2>
+                        Asset Vault
+                    </h2>
+
+                    <span>
+                        Warranty Manager
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <nav class="sidebar-nav">
+
+                <button
+                    id="dashboardNav"
+                    class="nav-item active"
+                >
+
+                    <span class="nav-icon">
+                        ▦
+                    </span>
+
+                    Dashboard
+
+                </button>
+
+
+                <button
+                    id="assetsNav"
+                    class="nav-item"
+                >
+
+                    <span class="nav-icon">
+                        ◫
+                    </span>
+
+                    My Assets
+
+                </button>
+
+
+                <button
+                    id="addAssetNav"
+                    class="nav-item"
+                >
+
+                    <span class="nav-icon">
+                        +
+                    </span>
+
+                    Add Asset
+
+                </button>
+
+            </nav>
+
+
+            <div class="sidebar-status">
+
+                <span class="status-dot"></span>
+
+                System Online
+
+            </div>
+
+        </aside>
+
+
+
+        <!-- =========================================
+             MAIN CONTENT
+             ========================================= -->
+
+        <main class="main-content">
+
+
+            <!-- =========================================
+                 TOP HEADER
+                 ========================================= -->
+
+            <header class="top-header">
+
+                <div>
+
+                    <h1 id="pageTitle">
+                        Dashboard
+                    </h1>
+
+                    <p id="pageSubtitle">
+                        Overview of your assets and warranties
+                    </p>
+
+                </div>
+
+
+                <button
+                    id="addAssetButton"
+                    class="primary-button"
+                >
+
+                    <span>
+                        +
+                    </span>
+
+                    Add Asset
+
+                </button>
+
+            </header>
+
+
+
+            <!-- =========================================
+                 DASHBOARD
+                 ========================================= -->
+
+            <section
+                id="dashboardSection"
+                class="page-section"
+            >
+
+
+                <!-- Dashboard Stats -->
+
+                <div class="stats-grid">
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-card-header">
+
+                            <span>
+                                Total Assets
+                            </span>
+
+                            <div class="stat-icon">
+                                ◫
+                            </div>
+
+                        </div>
+
+                        <strong id="totalAssets">
+                            0
+                        </strong>
+
+                        <p>
+                            Registered assets
+                        </p>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-card-header">
+
+                            <span>
+                                Active Warranty
+                            </span>
+
+                            <div class="stat-icon">
+                                ✓
+                            </div>
+
+                        </div>
+
+                        <strong id="activeWarranties">
+                            0
+                        </strong>
+
+                        <p>
+                            Currently protected
+                        </p>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-card-header">
+
+                            <span>
+                                Expiring Soon
+                            </span>
+
+                            <div class="stat-icon">
+                                !
+                            </div>
+
+                        </div>
+
+                        <strong id="expiringSoon">
+                            0
+                        </strong>
+
+                        <p>
+                            Within 30 days
+                        </p>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-card-header">
+
+                            <span>
+                                Total Value
+                            </span>
+
+                            <div class="stat-icon">
+                                ₹
+                            </div>
+
+                        </div>
+
+                        <strong id="totalValue">
+                            ₹0
+                        </strong>
+
+                        <p>
+                            Total purchase value
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- =========================================
+                     WARRANTY ALERTS
+                     ========================================= -->
+
+                <section class="warranty-alerts-section">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h2>
+                                Attention Required
+                            </h2>
+
+                            <p>
+                                Warranty alerts that may need your attention
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        id="warrantyAlerts"
+                        class="warranty-alerts"
+                    >
+
+                        <div class="warranty-alert-empty">
+
+                            <div class="alert-success-icon">
+                                ✓
+                            </div>
+
+                            <div>
+
+                                <strong>
+                                    All warranties are on track
+                                </strong>
+
+                                <p>
+                                    No assets currently require attention.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =========================================
+                     ANALYTICS
+                     ========================================= -->
+
+                <section class="analytics-section">
+
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h2>
+                                Asset Analytics
+                            </h2>
+
+                            <p>
+                                Insights into your assets, spending and warranties
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- Analytics Top Row -->
+
+                    <div class="analytics-grid">
+
+
+                        <!-- Warranty Distribution -->
+
+                        <div class="analytics-card">
+
+                            <div class="analytics-card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Warranty Status
+                                    </h3>
+
+                                    <p>
+                                        Current protection status
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="warranty-chart">
+
+
+                                <div class="chart-row">
+
+                                    <div class="chart-label">
+
+                                        <span class="chart-dot active-dot"></span>
+
+                                        Active
+
+                                    </div>
+
+                                    <strong id="analyticsActive">
+                                        0
+                                    </strong>
+
+                                </div>
+
+
+                                <div class="chart-track">
+
+                                    <div
+                                        id="activeBar"
+                                        class="chart-fill active-fill"
+                                        style="width: 0%;"
+                                    ></div>
+
+                                </div>
+
+
+
+                                <div class="chart-row">
+
+                                    <div class="chart-label">
+
+                                        <span class="chart-dot expiring-dot"></span>
+
+                                        Expiring Soon
+
+                                    </div>
+
+                                    <strong id="analyticsExpiring">
+                                        0
+                                    </strong>
+
+                                </div>
+
+
+                                <div class="chart-track">
+
+                                    <div
+                                        id="expiringBar"
+                                        class="chart-fill expiring-fill"
+                                        style="width: 0%;"
+                                    ></div>
+
+                                </div>
+
+
+
+                                <div class="chart-row">
+
+                                    <div class="chart-label">
+
+                                        <span class="chart-dot expired-dot"></span>
+
+                                        Expired
+
+                                    </div>
+
+                                    <strong id="analyticsExpired">
+                                        0
+                                    </strong>
+
+                                </div>
+
+
+                                <div class="chart-track">
+
+                                    <div
+                                        id="expiredBar"
+                                        class="chart-fill expired-fill"
+                                        style="width: 0%;"
+                                    ></div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+
+                        <!-- Asset Value -->
+
+                        <div class="analytics-card">
+
+                            <div class="analytics-card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Asset Value
+                                    </h3>
+
+                                    <p>
+                                        Purchase value overview
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="analytics-value-list">
+
+
+                                <div class="analytics-value-item">
+
+                                    <span>
+                                        Total Investment
+                                    </span>
+
+                                    <strong id="analyticsTotalValue">
+                                        ₹0
+                                    </strong>
+
+                                </div>
+
+
+                                <div class="analytics-value-item">
+
+                                    <span>
+                                        Average Asset Value
+                                    </span>
+
+                                    <strong id="analyticsAverageValue">
+                                        ₹0
+                                    </strong>
+
+                                </div>
+
+
+                                <div class="analytics-value-item">
+
+                                    <span>
+                                        Highest Value Asset
+                                    </span>
+
+                                    <strong id="analyticsHighestValue">
+                                        ₹0
+                                    </strong>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- Analytics Bottom Row -->
+
+                    <div class="analytics-grid analytics-bottom-grid">
+
+
+                        <!-- Warranty Timeline -->
+
+                        <div class="analytics-card">
+
+                            <div class="analytics-card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Warranty Timeline
+                                    </h3>
+
+                                    <p>
+                                        Upcoming warranty expiries
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div
+                                id="warrantyTimeline"
+                                class="timeline-list"
+                            >
+
+                                <div class="analytics-empty">
+
+                                    No warranty data available.
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+
+                        <!-- Asset Insights -->
+
+                        <div class="analytics-card">
+
+                            <div class="analytics-card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Asset Insights
+                                    </h3>
+
+                                    <p>
+                                        Your most valuable assets
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <div
+                                id="assetInsights"
+                                class="insights-list"
+                            >
+
+                                <div class="analytics-empty">
+
+                                    No assets available.
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                </section>
+
+
+
+                <!-- =========================================
+                     RECENT ASSETS
+                     ========================================= -->
+
+                <section class="dashboard-assets-section">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <h2>
+                                Recent Assets
+                            </h2>
+
+                            <p>
+                                Your recently added assets
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            id="viewAllButton"
+                            class="text-button"
+                        >
+
+                            View All
+
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="assetGrid"
+                        class="asset-grid"
+                    >
+                    </div>
+
+
+                    <div
+                        id="emptyState"
+                        class="empty-state"
+                        style="display: none;"
+                    >
+
+                        <div class="empty-state-icon">
+                            ◫
+                        </div>
+
+                        <h3>
+                            No assets yet
+                        </h3>
+
+                        <p>
+                            Add your first asset to start managing
+                            warranties and receipts.
+                        </p>
+
+                        <button
+                            id="emptyAddButton"
+                            class="primary-button"
+                        >
+
+                            + Add Your First Asset
+
+                        </button>
+
+                    </div>
+
+                </section>
+
+
+            </section>
+
+
+
+            <!-- =========================================
+                 MY ASSETS
+                 ========================================= -->
+
+            <section
+                id="assetsSection"
+                class="page-section"
+                style="display: none;"
+            >
+
+
+                <div class="section-header">
+
+                    <div>
+
+                        <h2>
+                            My Assets
+                        </h2>
+
+                        <p>
+                            Manage all your registered assets
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        id="assetsAddButton"
+                        class="primary-button"
+                    >
+
+                        + Add Asset
+
+                    </button>
+
+                </div>
+
+
+
+                <!-- =========================================
+                     SEARCH + FILTER + SORT
+                     ========================================= -->
+
+                <div class="asset-toolbar">
+
+
+                    <div class="asset-search-wrapper">
+
+                        <span class="asset-search-icon">
+                            ⌕
+                        </span>
+
+
+                        <input
+                            type="text"
+                            id="assetSearch"
+                            class="asset-search"
+                            placeholder="Search assets by name, brand, model, serial or invoice..."
+                        >
+
+                    </div>
+
+
+
+                    <div class="asset-filter-group">
+
+
+                        <select
+                            id="warrantyFilter"
+                            class="asset-filter"
+                        >
+
+                            <option value="all">
+                                All Warranties
+                            </option>
+
+                            <option value="active">
+                                Active
+                            </option>
+
+                            <option value="expiring">
+                                Expiring Soon
+                            </option>
+
+                            <option value="expired">
+                                Expired
+                            </option>
+
+                        </select>
+
+
+
+                        <select
+                            id="assetSort"
+                            class="asset-filter"
+                        >
+
+                            <option value="newest">
+                                Newest First
+                            </option>
+
+                            <option value="oldest">
+                                Oldest First
+                            </option>
+
+                            <option value="price-high">
+                                Highest Price
+                            </option>
+
+                            <option value="price-low">
+                                Lowest Price
+                            </option>
+
+                            <option value="warranty-soon">
+                                Warranty Ending Soon
+                            </option>
+
+                        </select>
+
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- All Assets -->
+
+                <div
+                    id="allAssetsGrid"
+                    class="asset-grid"
+                >
+                </div>
+
+
+            </section>
+
+
+
+            <!-- =========================================
+                 ADD / EDIT ASSET
+                 ========================================= -->
+
+            <section
+                id="addAssetSection"
+                class="page-section"
+                style="display: none;"
+            >
+
+
+                <div class="form-container">
+
+
+                    <!-- Invoice Upload -->
+
+                    <div class="form-card">
+
+                        <div class="form-card-header">
+
+                            <div>
+
+                                <h2>
+                                    Invoice / Receipt
+                                </h2>
+
+                                <p>
+                                    Upload an invoice and let OCR
+                                    automatically extract the details.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="upload-area">
+
+
+                            <input
+                                type="file"
+                                id="receiptFile"
+                                accept=".jpg,.jpeg,.png"
+                                hidden
+                            >
+
+
+                            <div class="upload-icon">
+                                ↑
+                            </div>
+
+
+                            <h3>
+                                Upload Invoice
+                            </h3>
+
+
+                            <p>
+                                JPG, JPEG or PNG
+                            </p>
+
+
+                            <button
+                                type="button"
+                                id="chooseFileButton"
+                                class="secondary-button"
+                            >
+
+                                Choose File
+
+                            </button>
+
+
+                            <p
+                                id="selectedFileName"
+                                class="selected-file-name"
+                            >
+                                No file selected
+                            </p>
+
+
+                            <button
+                                type="button"
+                                id="scanButton"
+                                class="primary-button"
+                            >
+
+                                Scan Invoice with OCR
+
+                            </button>
+
+
+                            <p
+                                id="ocrStatus"
+                                class="ocr-status"
+                            >
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- Asset Form -->
+
+                    <form
+                        id="assetForm"
+                        class="form-card"
+                    >
+
+
+                        <div class="form-card-header">
+
+                            <div>
+
+                                <h2>
+                                    Asset Details
+                                </h2>
+
+                                <p>
+                                    Review and confirm the extracted
+                                    information.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+
+                        <div class="form-grid">
+
+
+                            <!-- Product Name -->
+
+                            <div class="form-group">
+
+                                <label for="productName">
+                                    Product Name
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="productName"
+                                    placeholder="e.g. Samsung Galaxy S25"
+                                    required
+                                >
+
+                            </div>
+
+
+
+                            <!-- Brand -->
+
+                            <div class="form-group">
+
+                                <label for="brand">
+                                    Brand
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="brand"
+                                    placeholder="e.g. Samsung"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Model -->
+
+                            <div class="form-group">
+
+                                <label for="modelNumber">
+                                    Model Number
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="modelNumber"
+                                    placeholder="e.g. SM-S931B"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Serial -->
+
+                            <div class="form-group">
+
+                                <label for="serialNumber">
+                                    Serial Number
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="serialNumber"
+                                    placeholder="Enter serial number"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Purchase Date -->
+
+                            <div class="form-group">
+
+                                <label for="purchaseDate">
+                                    Purchase Date
+                                </label>
+
+                                <input
+                                    type="date"
+                                    id="purchaseDate"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Purchase Price -->
+
+                            <div class="form-group">
+
+                                <label for="purchasePrice">
+                                    Purchase Price
+                                </label>
+
+                                <input
+                                    type="number"
+                                    id="purchasePrice"
+                                    placeholder="e.g. 79999"
+                                    min="0"
+                                    step="0.01"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Currency -->
+
+                            <div class="form-group">
+
+                                <label for="currency">
+                                    Currency
+                                </label>
+
+                                <select id="currency">
+
+                                    <option value="INR">
+                                        INR - ₹
+                                    </option>
+
+                                    <option value="USD">
+                                        USD - $
+                                    </option>
+
+                                    <option value="EUR">
+                                        EUR - €
+                                    </option>
+
+                                    <option value="GBP">
+                                        GBP - £
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+
+
+                            <!-- Warranty -->
+
+                            <div class="form-group">
+
+                                <label for="warrantyMonths">
+                                    Warranty Duration
+                                </label>
+
+                                <input
+                                    type="number"
+                                    id="warrantyMonths"
+                                    placeholder="Months"
+                                    min="0"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Seller -->
+
+                            <div class="form-group">
+
+                                <label for="seller">
+                                    Seller
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="seller"
+                                    placeholder="e.g. Apple Store"
+                                >
+
+                            </div>
+
+
+
+                            <!-- Invoice -->
+
+                            <div class="form-group">
+
+                                <label for="invoiceNumber">
+                                    Invoice Number
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="invoiceNumber"
+                                    placeholder="e.g. INV-2026-001"
+                                >
+
+                            </div>
+
+
+                        </div>
+
+
+
+                        <!-- Form Actions -->
+
+                        <div class="form-actions">
+
+
+                            <button
+                                type="button"
+                                id="cancelButton"
+                                class="secondary-button"
+                            >
+
+                                Cancel
+
+                            </button>
+
+
+                            <button
+                                type="submit"
+                                class="primary-button"
+                            >
+
+                                Save Asset
+
+                            </button>
+
+                        </div>
+
+
+                    </form>
+
+
+                </div>
+
+
+            </section>
+
+
+        </main>
+
+    </div>
+
+
+
+    <!-- =========================================
+         ASSET DETAILS MODAL
+         ========================================= -->
+
+    <div
+        id="assetModal"
+        class="modal"
+        style="display: none;"
+    >
+
+        <div class="modal-content">
+
+
+            <button
+                id="modalClose"
+                class="modal-close"
+                type="button"
+            >
+                ×
+            </button>
+
+
+            <div id="modalBody">
+            </div>
+
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =========================================
+         JAVASCRIPT
+         ========================================= -->
+
+    <script src="/static/app.js"></script>
+
+
+</body>
+
+</html>
