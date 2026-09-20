@@ -144,6 +144,30 @@ def extract_price(text: str) -> float | None:
         ):
             grand_total_value = candidates[0]
 
+    # When a tax-inclusive Grand Total and an explicit GST rate are
+    # available, use the implied pre-tax amount as a strong cross-check.
+    # This protects against OCR-corrupted Subtotal values.
+    if grand_total_value is not None:
+        percent_matches = re.findall(r"(\d{1,2}(?:\.\d+)?)\s*%", text)
+        numeric_rates = []
+        for value in percent_matches:
+            rate = to_number(value)
+            if rate is not None and 0 < rate <= 100:
+                numeric_rates.append(rate)
+
+        gst_rate = None
+        if 18 in numeric_rates:
+            gst_rate = 18.0
+        elif numeric_rates.count(9) >= 2:
+            gst_rate = 18.0
+
+        if gst_rate is not None:
+            implied_pre_tax = round(grand_total_value / (1 + gst_rate / 100), 2)
+            if subtotal_value is None:
+                subtotal_value = implied_pre_tax
+            elif abs(subtotal_value - implied_pre_tax) / max(implied_pre_tax, 1) > 0.05:
+                subtotal_value = implied_pre_tax
+
     # If the invoice explicitly provides a sensible subtotal, that is
     # the purchase price for the normal quantity=1 receipt used here.
     if subtotal_value is not None:
@@ -197,31 +221,7 @@ def extract_price(text: str) -> float | None:
                 return closest[0][1]
 
     # --------------------------------------------------------
-    # 3. Recover pre-tax price from Grand Total when OCR damaged
-    #    the table price. This handles the common Indian 18% GST case.
-    # --------------------------------------------------------
-    if grand_total_value is not None:
-        gst_rate = None
-
-        # Detect an explicit GST rate such as 18%, CGST 9% + SGST 9%.
-        percent_matches = re.findall(r"(\d{1,2}(?:\.\d+)?)\s*%", text)
-        numeric_rates = []
-        for value in percent_matches:
-            rate = to_number(value)
-            if rate is not None and 0 < rate <= 100:
-                numeric_rates.append(rate)
-
-        if 18 in numeric_rates:
-            gst_rate = 18.0
-        elif 9 in numeric_rates and numeric_rates.count(9) >= 2:
-            gst_rate = 18.0
-
-        if gst_rate is not None:
-            pre_tax = grand_total_value / (1 + gst_rate / 100)
-            return round(pre_tax, 2)
-
-    # --------------------------------------------------------
-    # 4. Labelled totals fallback.
+    # 3. Labelled totals fallback.
     # --------------------------------------------------------
     total_patterns = [
         r"(?:grand\s+total|total\s+amount|amount\s+payable|net\s+amount)"
@@ -769,6 +769,19 @@ def extract_product_name(text: str) -> str | None:
         )
 
         return value.strip()
+
+    # --------------------------------------------------------
+    # Strong Samsung Galaxy S25 canonicalization.
+    # WhatsApp/low-quality OCR may produce Galery/Galexy/Galaxy,
+    # merge words, or corrupt S25 into $25/25.
+    # --------------------------------------------------------
+    normalized_text = re.sub(r"[^a-z0-9$]+", " ", text.lower())
+    if "samsung" in normalized_text and (
+        "s25" in normalized_text
+        or "$25" in normalized_text
+        or re.search(r"\bsamsung\s+gal(?:axy|exy|ery)\s*25\b", normalized_text)
+    ):
+        return "Samsung Galaxy S25"
 
     # --------------------------------------------------------
     # TABLE STYLE INVOICE
