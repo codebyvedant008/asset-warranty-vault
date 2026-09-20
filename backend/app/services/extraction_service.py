@@ -38,7 +38,7 @@ def extract_currency(text: str) -> str:
     """
     Detect invoice currency.
 
-    Indian invoices may lose the â‚¹ symbol during OCR,
+    Indian invoices may lose the Ã¢â€šÂ¹ symbol during OCR,
     so we also check for GST-related indicators and
     Indian location indicators.
     """
@@ -47,7 +47,7 @@ def extract_currency(text: str) -> str:
 
     indian_indicators = [
         "INR",
-        "â‚¹",
+        "Ã¢â€šÂ¹",
         "RS.",
         "RS ",
         "CGST",
@@ -65,10 +65,10 @@ def extract_currency(text: str) -> str:
     if "$" in text or "USD" in upper_text:
         return "USD"
 
-    if "â‚¬" in text or "EUR" in upper_text:
+    if "Ã¢â€šÂ¬" in text or "EUR" in upper_text:
         return "EUR"
 
-    if "Â£" in text or "GBP" in upper_text:
+    if "Ã‚Â£" in text or "GBP" in upper_text:
         return "GBP"
 
     # Default for this application
@@ -81,151 +81,229 @@ def extract_currency(text: str) -> str:
 
 def extract_price(text: str) -> float | None:
     """
-    Extract purchase price.
+    Extract purchase price from an invoice.
 
-    For invoices with a Unit Price column, prefer the largest
-    item-price-like amount between "Unit Price" and "Subtotal".
-    This avoids incorrectly selecting Grand Total when tax is added.
+    Price selection is context-aware:
+    1. Prefer a value explicitly associated with Unit Price.
+    2. If the invoice has Quantity + Unit Price + Subtotal, use the
+       unit-price value that best agrees with the subtotal.
+    3. Fall back to labelled totals.
+    4. Finally fall back to currency-marked amounts.
 
-    Priority:
-    1. Unit Price
-    2. Grand Total
-    3. Total Amount
-    4. Amount Payable
-    5. Net Amount
-    6. Total
-    7. Largest currency amount
+    This avoids blindly taking the largest number in the Unit Price
+    section, which can select an OCR-corrupted value such as 279,999
+    instead of the actual 79,999.
     """
 
-    # --------------------------------------------------------
-    # UNIT PRICE
-    # --------------------------------------------------------
-    #
-    # On OCR'd table invoices, the Unit Price header and the
-    # actual amount may be separated by several columns/lines.
-    # We therefore inspect the section before Subtotal.
-    # Serial-number tokens are removed first so their digits
-    # cannot be mistaken for a price.
-    # --------------------------------------------------------
+    def to_number(value: str) -> float | None:
+        try:
+            value = value.replace("%", "").replace(",", "").strip()
+            return float(value)
+        except (ValueError, AttributeError):
+            return None
 
-    unit_price_match = re.search(
-        r"unit\s*price(.*?)(?=\bsubtotal\b|\bsub\s*total\b|\bgrand\s+total\b|$)",
-        text,
-        re.IGNORECASE | re.DOTALL
-    )
-
-    if unit_price_match:
-
-        unit_price_section = unit_price_match.group(1)
-
-        # Remove serial numbers such as SNTEST20260918001
-        unit_price_section = re.sub(
+    def amount_candidates(value: str) -> list[float]:
+        """
+        Extract plausible monetary amounts while avoiding serial/model
+        fragments. Both comma-formatted and plain long numbers are allowed.
+        """
+        value = re.sub(
             r"\bSN[A-Z0-9][A-Z0-9\-/]+\b",
             " ",
-            unit_price_section,
-            flags=re.IGNORECASE
+            value,
+            flags=re.IGNORECASE,
         )
-
-        # Remove model numbers such as SM-S931B / SM-S9318
-        unit_price_section = re.sub(
+        value = re.sub(
             r"\bSM-[A-Z0-9][A-Z0-9\-/]+\b",
             " ",
-            unit_price_section,
-            flags=re.IGNORECASE
+            value,
+            flags=re.IGNORECASE,
         )
 
-        # Prefer comma-formatted monetary values, then long
-        # plain numbers such as 79999.00.
-        amount_matches = re.findall(
+        matches = re.findall(
             r"(?<![A-Z0-9])"
             r"(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?"
             r"|\d{4,}(?:\.\d{1,2})?)"
             r"(?![A-Z0-9])",
-            unit_price_section,
-            re.IGNORECASE
+            value,
+            re.IGNORECASE,
         )
 
-        amounts = []
+        result = []
+        for match in matches:
+            number = to_number(match)
+            if number is not None and number >= 100:
+                result.append(number)
 
-        for value in amount_matches:
+        return result
 
-            try:
-                numeric_value = float(
-                    value.replace(",", "")
-                )
-
-                # Ignore tiny table quantities/model fragments.
-                if numeric_value >= 100:
-                    amounts.append(numeric_value)
-
-            except ValueError:
-                continue
-
-        if amounts:
-            return max(amounts)
+    lines = get_lines(text)
 
     # --------------------------------------------------------
-    # TOTALS
+    # UNIT PRICE / TABLE EXTRACTION
+    # --------------------------------------------------------
+    #
+    # First inspect the actual invoice lines instead of taking the
+    # largest number between Unit Price and Subtotal.
+    # --------------------------------------------------------
+
+    unit_index = None
+    subtotal_index = None
+
+    for i, line in enumerate(lines):
+        lower = line.lower()
+
+        if unit_index is None and re.search(r"\bunit\s*price\b", lower):
+            unit_index = i
+
+        if subtotal_index is None and re.search(
+            r"\bsub\s*total\b|\bsubtotal\b",
+            lower,
+        ):
+            subtotal_index = i
+
+    if unit_index is not None:
+        end_index = subtotal_index if (
+            subtotal_index is not None and subtotal_index > unit_index
+        ) else min(unit_index + 8, len(lines))
+
+        section_lines = lines[unit_index:end_index]
+
+        # Candidate amounts close to the Unit Price label are more
+        # trustworthy than arbitrary numbers farther down the invoice.
+        nearby_candidates = []
+
+        for offset, line in enumerate(section_lines):
+            candidates = amount_candidates(line)
+
+            for value in candidates:
+                nearby_candidates.append(
+                    {
+                        "value": value,
+                        "distance": offset,
+                        "line": line,
+                    }
+                )
+
+        if nearby_candidates:
+            # Look for an explicitly labelled Unit Price on the same line.
+            for candidate in nearby_candidates:
+                if re.search(
+                    r"\bunit\s*price\b",
+                    candidate["line"],
+                    re.IGNORECASE,
+                ):
+                    return candidate["value"]
+
+            # If the Unit Price header is followed by table values on
+            # subsequent lines, use the closest plausible amount.
+            min_distance = min(
+                candidate["distance"]
+                for candidate in nearby_candidates
+            )
+
+            closest = [
+                candidate
+                for candidate in nearby_candidates
+                if candidate["distance"] == min_distance
+            ]
+
+            if len(closest) == 1:
+                return closest[0]["value"]
+
+            # ----------------------------------------------------
+            # SUBTOTAL CORROBORATION
+            # ----------------------------------------------------
+            #
+            # For the common quantity=1 invoice layout, the unit price
+            # should equal the subtotal. Use that relationship when
+            # available. This is especially useful when OCR creates a
+            # larger spurious number in the same table region.
+            # ----------------------------------------------------
+
+            subtotal_value = None
+
+            if subtotal_index is not None:
+                subtotal_window = " ".join(
+                    lines[subtotal_index:subtotal_index + 2]
+                )
+
+                subtotal_candidates = amount_candidates(
+                    subtotal_window
+                )
+
+                if subtotal_candidates:
+                    # Prefer an amount explicitly on the subtotal line.
+                    subtotal_value = subtotal_candidates[0]
+
+            if subtotal_value is not None:
+                exact_matches = [
+                    candidate["value"]
+                    for candidate in nearby_candidates
+                    if abs(candidate["value"] - subtotal_value) < 0.01
+                ]
+
+                if exact_matches:
+                    return exact_matches[0]
+
+            # Otherwise use the candidate nearest the Unit Price label.
+            return closest[0]["value"]
+
+    # --------------------------------------------------------
+    # LABELLED TOTALS
     # --------------------------------------------------------
 
     total_patterns = [
         r"(?:grand\s+total|total\s+amount|amount\s+payable|net\s+amount)"
-        r"\s*[:\-]?\s*(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*"
+        r"\s*[:\-]?\s*(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)?\s*"
         r"([%\d,]+(?:\.\d{1,2})?)",
 
         r"(?:total)"
-        r"\s*[:\-]?\s*(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*"
+        r"\s*[:\-]?\s*(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)?\s*"
         r"([%\d,]+(?:\.\d{1,2})?)",
     ]
 
     for pattern in total_patterns:
-
         match = re.search(
             pattern,
             text,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         if match:
+            value = to_number(match.group(1))
 
-            value = match.group(1).replace("%", "")
+            if value is not None:
+                return value
 
-            try:
-                return float(
-                    value.replace(",", "")
-                )
+    # --------------------------------------------------------
+    # CURRENCY-MARKED AMOUNTS
+    # --------------------------------------------------------
 
-            except ValueError:
-                pass
-
-    # Currency marked amounts
     currency_pattern = (
-        r"(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)\s*"
+        r"(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)\s*"
         r"([\d,]+(?:\.\d{1,2})?)"
     )
 
     matches = re.findall(
         currency_pattern,
         text,
-        re.IGNORECASE
+        re.IGNORECASE,
     )
 
     amounts = []
 
     for value in matches:
+        number = to_number(value)
 
-        try:
-            amounts.append(
-                float(value.replace(",", ""))
-            )
-
-        except ValueError:
-            continue
+        if number is not None:
+            amounts.append(number)
 
     if amounts:
         return max(amounts)
 
     return None
+
 
 def extract_date(text: str) -> str | None:
     """
