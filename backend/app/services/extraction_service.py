@@ -81,49 +81,33 @@ def extract_currency(text: str) -> str:
 
 def extract_price(text: str) -> float | None:
     """
-    Extract purchase price from an invoice.
+    Extract the purchase price from an invoice.
 
-    Price selection is context-aware:
-    1. Prefer a value explicitly associated with Unit Price.
-    2. If the invoice has Quantity + Unit Price + Subtotal, use the
-       unit-price value that best agrees with the subtotal.
-    3. Fall back to labelled totals.
-    4. Finally fall back to currency-marked amounts.
-
-    This avoids blindly taking the largest number in the Unit Price
-    section, which can select an OCR-corrupted value such as 279,999
-    instead of the actual 79,999.
+    The extractor prefers the invoice's explicit Subtotal/Unit Price
+    relationship and uses the Grand Total + tax information as a
+    cross-check. It deliberately rejects an OCR price that is larger
+    than the invoice total, which prevents values such as 279,999 from
+    replacing a real 79,999 purchase price.
     """
 
     def to_number(value: str) -> float | None:
         try:
-            value = value.replace("%", "").replace(",", "").strip()
-            return float(value)
+            return float(value.replace("%", "").replace(",", "").strip())
         except (ValueError, AttributeError):
             return None
 
     def amount_candidates(value: str) -> list[float]:
-        """
-        Extract plausible monetary amounts while avoiding serial/model
-        fragments. Both comma-formatted and plain long numbers are allowed.
-        """
+        # Remove serial/model tokens before extracting numbers.
         value = re.sub(
-            r"\bSN[A-Z0-9][A-Z0-9\-/]+\b",
-            " ",
-            value,
-            flags=re.IGNORECASE,
+            r"\bSN[A-Z0-9][A-Z0-9\-/]+\b", " ", value, flags=re.IGNORECASE
         )
         value = re.sub(
-            r"\bSM-[A-Z0-9][A-Z0-9\-/]+\b",
-            " ",
-            value,
-            flags=re.IGNORECASE,
+            r"\bSM-[A-Z0-9][A-Z0-9\-/]+\b", " ", value, flags=re.IGNORECASE
         )
 
         matches = re.findall(
             r"(?<![A-Z0-9])"
-            r"(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?"
-            r"|\d{4,}(?:\.\d{1,2})?)"
+            r"(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{4,}(?:\.\d{1,2})?)"
             r"(?![A-Z0-9])",
             value,
             re.IGNORECASE,
@@ -134,176 +118,142 @@ def extract_price(text: str) -> float | None:
             number = to_number(match)
             if number is not None and number >= 100:
                 result.append(number)
-
         return result
 
     lines = get_lines(text)
 
     # --------------------------------------------------------
-    # UNIT PRICE / TABLE EXTRACTION
+    # 1. Read explicit subtotal and grand total first.
     # --------------------------------------------------------
-    #
-    # First inspect the actual invoice lines instead of taking the
-    # largest number between Unit Price and Subtotal.
-    # --------------------------------------------------------
-
-    unit_index = None
-    subtotal_index = None
+    subtotal_value = None
+    grand_total_value = None
 
     for i, line in enumerate(lines):
         lower = line.lower()
+        window = " ".join(lines[i:i + 2])
+        candidates = amount_candidates(window)
+        if not candidates:
+            continue
 
-        if unit_index is None and re.search(r"\bunit\s*price\b", lower):
-            unit_index = i
+        if subtotal_value is None and re.search(r"\bsub\s*total\b|\bsubtotal\b", lower):
+            subtotal_value = candidates[0]
 
-        if subtotal_index is None and re.search(
-            r"\bsub\s*total\b|\bsubtotal\b",
+        if grand_total_value is None and re.search(
+            r"\bgrand\s+total\b|\btotal\s+amount\b|\bamount\s+payable\b|\bnet\s+amount\b",
             lower,
         ):
-            subtotal_index = i
+            grand_total_value = candidates[0]
+
+    # If the invoice explicitly provides a sensible subtotal, that is
+    # the purchase price for the normal quantity=1 receipt used here.
+    if subtotal_value is not None:
+        if grand_total_value is None or subtotal_value <= grand_total_value * 1.05:
+            return subtotal_value
+
+    # --------------------------------------------------------
+    # 2. Unit Price table extraction.
+    # --------------------------------------------------------
+    unit_index = None
+    for i, line in enumerate(lines):
+        if re.search(r"\bunit\s*price\b", line, re.IGNORECASE):
+            unit_index = i
+            break
 
     if unit_index is not None:
-        end_index = subtotal_index if (
-            subtotal_index is not None and subtotal_index > unit_index
-        ) else min(unit_index + 8, len(lines))
+        end_index = len(lines)
+        for i in range(unit_index + 1, len(lines)):
+            if re.search(r"\bsub\s*total\b|\bsubtotal\b|\bgrand\s+total\b", lines[i], re.IGNORECASE):
+                end_index = i
+                break
 
         section_lines = lines[unit_index:end_index]
+        candidates = []
 
-        # Candidate amounts close to the Unit Price label are more
-        # trustworthy than arbitrary numbers farther down the invoice.
-        nearby_candidates = []
+        for distance, line in enumerate(section_lines):
+            for value in amount_candidates(line):
+                candidates.append((distance, value, line))
 
-        for offset, line in enumerate(section_lines):
-            candidates = amount_candidates(line)
-
-            for value in candidates:
-                nearby_candidates.append(
-                    {
-                        "value": value,
-                        "distance": offset,
-                        "line": line,
-                    }
-                )
-
-        if nearby_candidates:
-            # Look for an explicitly labelled Unit Price on the same line.
-            for candidate in nearby_candidates:
-                if re.search(
-                    r"\bunit\s*price\b",
-                    candidate["line"],
-                    re.IGNORECASE,
-                ):
-                    return candidate["value"]
-
-            # If the Unit Price header is followed by table values on
-            # subsequent lines, use the closest plausible amount.
-            min_distance = min(
-                candidate["distance"]
-                for candidate in nearby_candidates
-            )
-
-            closest = [
-                candidate
-                for candidate in nearby_candidates
-                if candidate["distance"] == min_distance
+        # Reject OCR candidates that are impossible purchase prices because
+        # they exceed the invoice grand total by a meaningful amount.
+        if grand_total_value is not None:
+            candidates = [
+                item for item in candidates
+                if item[1] <= grand_total_value * 1.05
             ]
 
-            if len(closest) == 1:
-                return closest[0]["value"]
+        if candidates:
+            # Same-line Unit Price is strongest evidence.
+            same_line = [
+                item for item in candidates
+                if re.search(r"\bunit\s*price\b", item[2], re.IGNORECASE)
+            ]
+            if same_line:
+                return same_line[0][1]
 
-            # ----------------------------------------------------
-            # SUBTOTAL CORROBORATION
-            # ----------------------------------------------------
-            #
-            # For the common quantity=1 invoice layout, the unit price
-            # should equal the subtotal. Use that relationship when
-            # available. This is especially useful when OCR creates a
-            # larger spurious number in the same table region.
-            # ----------------------------------------------------
-
-            subtotal_value = None
-
-            if subtotal_index is not None:
-                subtotal_window = " ".join(
-                    lines[subtotal_index:subtotal_index + 2]
-                )
-
-                subtotal_candidates = amount_candidates(
-                    subtotal_window
-                )
-
-                if subtotal_candidates:
-                    # Prefer an amount explicitly on the subtotal line.
-                    subtotal_value = subtotal_candidates[0]
-
-            if subtotal_value is not None:
-                exact_matches = [
-                    candidate["value"]
-                    for candidate in nearby_candidates
-                    if abs(candidate["value"] - subtotal_value) < 0.01
-                ]
-
-                if exact_matches:
-                    return exact_matches[0]
-
-            # Otherwise use the candidate nearest the Unit Price label.
-            return closest[0]["value"]
+            # Otherwise choose the closest surviving candidate.
+            min_distance = min(item[0] for item in candidates)
+            closest = [item for item in candidates if item[0] == min_distance]
+            if closest:
+                return closest[0][1]
 
     # --------------------------------------------------------
-    # LABELLED TOTALS
+    # 3. Recover pre-tax price from Grand Total when OCR damaged
+    #    the table price. This handles the common Indian 18% GST case.
     # --------------------------------------------------------
+    if grand_total_value is not None:
+        gst_rate = None
 
+        # Detect an explicit GST rate such as 18%, CGST 9% + SGST 9%.
+        percent_matches = re.findall(r"(\d{1,2}(?:\.\d+)?)\s*%", text)
+        numeric_rates = []
+        for value in percent_matches:
+            rate = to_number(value)
+            if rate is not None and 0 < rate <= 100:
+                numeric_rates.append(rate)
+
+        if 18 in numeric_rates:
+            gst_rate = 18.0
+        elif 9 in numeric_rates and numeric_rates.count(9) >= 2:
+            gst_rate = 18.0
+
+        if gst_rate is not None:
+            pre_tax = grand_total_value / (1 + gst_rate / 100)
+            return round(pre_tax, 2)
+
+    # --------------------------------------------------------
+    # 4. Labelled totals fallback.
+    # --------------------------------------------------------
     total_patterns = [
         r"(?:grand\s+total|total\s+amount|amount\s+payable|net\s+amount)"
         r"\s*[:\-]?\s*(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)?\s*"
         r"([%\d,]+(?:\.\d{1,2})?)",
-
         r"(?:total)"
         r"\s*[:\-]?\s*(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)?\s*"
         r"([%\d,]+(?:\.\d{1,2})?)",
     ]
 
     for pattern in total_patterns:
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE,
-        )
-
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
             value = to_number(match.group(1))
-
             if value is not None:
                 return value
 
     # --------------------------------------------------------
-    # CURRENCY-MARKED AMOUNTS
+    # 5. Currency-marked fallback.
     # --------------------------------------------------------
-
     currency_pattern = (
         r"(?:â‚¹|rs\.?|inr|\$|usd|â‚¬|eur|Â£|gbp)\s*"
         r"([\d,]+(?:\.\d{1,2})?)"
     )
 
-    matches = re.findall(
-        currency_pattern,
-        text,
-        re.IGNORECASE,
-    )
-
     amounts = []
-
-    for value in matches:
+    for value in re.findall(currency_pattern, text, re.IGNORECASE):
         number = to_number(value)
-
         if number is not None:
             amounts.append(number)
 
-    if amounts:
-        return max(amounts)
-
-    return None
-
+    return max(amounts) if amounts else None
 
 def extract_date(text: str) -> str | None:
     """
