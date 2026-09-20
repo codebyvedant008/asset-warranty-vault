@@ -53,6 +53,22 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------
+# WhatsApp webhook deduplication
+# ---------------------------------------------------------
+#
+# Meta can retry the same webhook event.
+# We store already-processing message IDs here.
+#
+# IMPORTANT:
+# The ID is added BEFORE OCR/database processing.
+# Therefore, if the same event arrives again while the
+# first request is still processing, it will be ignored.
+# ---------------------------------------------------------
+
+PROCESSED_MESSAGE_IDS = set()
+
+
+# ---------------------------------------------------------
 # GET /webhook/whatsapp
 # Meta uses this endpoint to verify our webhook.
 # ---------------------------------------------------------
@@ -132,8 +148,53 @@ async def receive_whatsapp_webhook(
         message_type = message.get("type")
         sender_phone = message.get("from")
 
+        # -------------------------------------------------
+        # UNIQUE WHATSAPP MESSAGE ID
+        # -------------------------------------------------
+
+        message_id = message.get("id")
+
         print(f"Message type: {message_type}")
         print(f"Sender: {sender_phone}")
+        print(f"Message ID: {message_id}")
+
+        # -------------------------------------------------
+        # DUPLICATE WEBHOOK PROTECTION
+        # -------------------------------------------------
+
+        if message_id:
+
+            if message_id in PROCESSED_MESSAGE_IDS:
+
+                print("========================================")
+                print(
+                    "DUPLICATE WHATSAPP MESSAGE DETECTED"
+                )
+                print(f"Message ID: {message_id}")
+                print(
+                    "Ignoring duplicate event."
+                )
+                print("========================================")
+
+                return JSONResponse(
+                    content={
+                        "status": "duplicate_ignored",
+                        "message_id": message_id
+                    },
+                    status_code=200
+                )
+
+            # IMPORTANT:
+            # Mark the message as processed BEFORE doing
+            # OCR, extraction, database work, or replying.
+            PROCESSED_MESSAGE_IDS.add(message_id)
+
+            print("========================================")
+            print(
+                "New WhatsApp message ID registered."
+            )
+            print(f"Message ID: {message_id}")
+            print("========================================")
 
         # -------------------------------------------------
         # Handle text messages
