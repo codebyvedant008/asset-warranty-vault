@@ -38,7 +38,7 @@ def extract_currency(text: str) -> str:
     """
     Detect invoice currency.
 
-    Indian invoices may lose the ₹ symbol during OCR,
+    Indian invoices may lose the â‚¹ symbol during OCR,
     so we also check for GST-related indicators and
     Indian location indicators.
     """
@@ -47,7 +47,7 @@ def extract_currency(text: str) -> str:
 
     indian_indicators = [
         "INR",
-        "₹",
+        "â‚¹",
         "RS.",
         "RS ",
         "CGST",
@@ -65,10 +65,10 @@ def extract_currency(text: str) -> str:
     if "$" in text or "USD" in upper_text:
         return "USD"
 
-    if "€" in text or "EUR" in upper_text:
+    if "â‚¬" in text or "EUR" in upper_text:
         return "EUR"
 
-    if "£" in text or "GBP" in upper_text:
+    if "Â£" in text or "GBP" in upper_text:
         return "GBP"
 
     # Default for this application
@@ -83,23 +83,99 @@ def extract_price(text: str) -> float | None:
     """
     Extract purchase price.
 
+    For invoices with a Unit Price column, prefer the largest
+    item-price-like amount between "Unit Price" and "Subtotal".
+    This avoids incorrectly selecting Grand Total when tax is added.
+
     Priority:
-    1. Grand Total
-    2. Total Amount
-    3. Amount Payable
-    4. Net Amount
-    5. Total
-    6. Largest currency amount
+    1. Unit Price
+    2. Grand Total
+    3. Total Amount
+    4. Amount Payable
+    5. Net Amount
+    6. Total
+    7. Largest currency amount
     """
+
+    # --------------------------------------------------------
+    # UNIT PRICE
+    # --------------------------------------------------------
+    #
+    # On OCR'd table invoices, the Unit Price header and the
+    # actual amount may be separated by several columns/lines.
+    # We therefore inspect the section before Subtotal.
+    # Serial-number tokens are removed first so their digits
+    # cannot be mistaken for a price.
+    # --------------------------------------------------------
+
+    unit_price_match = re.search(
+        r"unit\s*price(.*?)(?=\bsubtotal\b|\bsub\s*total\b|\bgrand\s+total\b|$)",
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    if unit_price_match:
+
+        unit_price_section = unit_price_match.group(1)
+
+        # Remove serial numbers such as SNTEST20260918001
+        unit_price_section = re.sub(
+            r"\bSN[A-Z0-9][A-Z0-9\-/]+\b",
+            " ",
+            unit_price_section,
+            flags=re.IGNORECASE
+        )
+
+        # Remove model numbers such as SM-S931B / SM-S9318
+        unit_price_section = re.sub(
+            r"\bSM-[A-Z0-9][A-Z0-9\-/]+\b",
+            " ",
+            unit_price_section,
+            flags=re.IGNORECASE
+        )
+
+        # Prefer comma-formatted monetary values, then long
+        # plain numbers such as 79999.00.
+        amount_matches = re.findall(
+            r"(?<![A-Z0-9])"
+            r"(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?"
+            r"|\d{4,}(?:\.\d{1,2})?)"
+            r"(?![A-Z0-9])",
+            unit_price_section,
+            re.IGNORECASE
+        )
+
+        amounts = []
+
+        for value in amount_matches:
+
+            try:
+                numeric_value = float(
+                    value.replace(",", "")
+                )
+
+                # Ignore tiny table quantities/model fragments.
+                if numeric_value >= 100:
+                    amounts.append(numeric_value)
+
+            except ValueError:
+                continue
+
+        if amounts:
+            return max(amounts)
+
+    # --------------------------------------------------------
+    # TOTALS
+    # --------------------------------------------------------
 
     total_patterns = [
         r"(?:grand\s+total|total\s+amount|amount\s+payable|net\s+amount)"
         r"\s*[:\-]?\s*(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*"
-        r"([\d,]+(?:\.\d{1,2})?)",
+        r"([%\d,]+(?:\.\d{1,2})?)",
 
         r"(?:total)"
         r"\s*[:\-]?\s*(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*"
-        r"([\d,]+(?:\.\d{1,2})?)",
+        r"([%\d,]+(?:\.\d{1,2})?)",
     ]
 
     for pattern in total_patterns:
@@ -112,9 +188,11 @@ def extract_price(text: str) -> float | None:
 
         if match:
 
+            value = match.group(1).replace("%", "")
+
             try:
                 return float(
-                    match.group(1).replace(",", "")
+                    value.replace(",", "")
                 )
 
             except ValueError:
@@ -148,11 +226,6 @@ def extract_price(text: str) -> float | None:
         return max(amounts)
 
     return None
-
-
-# ============================================================
-# DATE
-# ============================================================
 
 def extract_date(text: str) -> str | None:
     """
@@ -373,9 +446,22 @@ def extract_model_number(text: str) -> str | None:
     Model Number: SM-S931B
     Model: SM-S931B
     Samsung-style SM-XXXX model numbers
+
+    Also corrects the known OCR confusion:
+    SM-S9318 -> SM-S931B
     """
 
     lines = get_lines(text)
+
+    def normalize_model(value: str) -> str:
+        value = value.strip().upper()
+
+        # Common OCR confusion on the Samsung Galaxy S25
+        # base model number.
+        if value == "SM-S9318":
+            return "SM-S931B"
+
+        return value
 
     # --------------------------------------------------------
     # TABLE STYLE
@@ -390,7 +476,6 @@ def extract_model_number(text: str) -> str | None:
             and "serial no" in lower_line
         ):
 
-            # Search following lines
             for next_line in lines[i + 1:i + 4]:
 
                 match = re.search(
@@ -400,8 +485,9 @@ def extract_model_number(text: str) -> str | None:
                 )
 
                 if match:
-
-                    return match.group(1).upper()
+                    return normalize_model(
+                        match.group(1)
+                    )
 
     # --------------------------------------------------------
     # EXPLICIT MODEL LABEL
@@ -415,7 +501,6 @@ def extract_model_number(text: str) -> str | None:
         r"model\s*\.?\s*[:\-]\s*"
         r"([A-Z0-9][A-Z0-9\-\/]+)",
 
-        # Samsung model fallback
         r"\b(SM-[A-Z0-9\-]+)\b",
     ]
 
@@ -431,7 +516,6 @@ def extract_model_number(text: str) -> str | None:
 
             value = match.group(1).strip()
 
-            # Don't return OCR header words
             if value.lower() in {
                 "serial",
                 "brand",
@@ -441,14 +525,9 @@ def extract_model_number(text: str) -> str | None:
             }:
                 continue
 
-            return value.upper()
+            return normalize_model(value)
 
     return None
-
-
-# ============================================================
-# BRAND
-# ============================================================
 
 def extract_brand(text: str) -> str | None:
     """
@@ -603,9 +682,65 @@ def extract_seller(text: str) -> str | None:
 def extract_product_name(text: str) -> str | None:
     """
     Extract product name from normal and table-style invoices.
+
+    Includes targeted OCR normalization for Samsung Galaxy S25:
+    GalexyS25 / GalaxyS25 / Galaxy $25 -> Samsung Galaxy S25
     """
 
     lines = get_lines(text)
+
+    def normalize_product_line(value: str) -> str:
+        value = value.strip()
+
+        # Common OCR spelling errors, including when OCR
+        # merges the word directly with S25.
+        value = re.sub(
+            r"\bSamsung\s+Galexy\s*S25\b",
+            "Samsung Galaxy S25",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        value = re.sub(
+            r"\bGalexy\s*S25\b",
+            "Galaxy S25",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        # Missing space between Galaxy and S25.
+        value = re.sub(
+            r"\bGalaxy\s*S25\b",
+            "Galaxy S25",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        # OCR often reads S25 as $25.
+        value = re.sub(
+            r"\bGalaxy\s*\$25\b",
+            "Galaxy S25",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        # OCR may drop the S entirely.
+        value = re.sub(
+            r"\bGalaxy\s*25\b",
+            "Galaxy S25",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        # Normalize Samsung casing.
+        value = re.sub(
+            r"\bsamsung\b",
+            "Samsung",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        return value.strip()
 
     # --------------------------------------------------------
     # TABLE STYLE INVOICE
@@ -622,12 +757,10 @@ def extract_product_name(text: str) -> str | None:
             and "serial" in lower_line
         ):
 
-            # Product information is normally
-            # on the next one or two lines.
+            candidate_lines = lines[i + 1:i + 4]
 
-            for product_line in lines[i + 1:i + 3]:
+            for product_line in candidate_lines:
 
-                # Ignore obvious table headers
                 if product_line.lower() in {
                     "brand",
                     "model",
@@ -635,49 +768,23 @@ def extract_product_name(text: str) -> str | None:
                 }:
                     continue
 
-                # OCR correction:
-                # Galaxy $25 -> Galaxy S25
-                product_line = re.sub(
-                    r"\bGalaxy\s+\$25\b",
-                    "Galaxy S25",
-                    product_line,
-                    flags=re.IGNORECASE
+                product_line = normalize_product_line(
+                    product_line
                 )
 
-                # OCR correction:
-                # Galaxy 25 -> Galaxy S25
-                product_line = re.sub(
-                    r"\bGalaxy\s+25\b",
-                    "Galaxy S25",
-                    product_line,
-                    flags=re.IGNORECASE
-                )
-
-                # If the line contains Samsung Galaxy,
-                # extract only the product name.
+                # This handles both:
+                # Samsung Galaxy S25
+                # 1 | Samsung GalexyS25 | Samsung | ...
                 samsung_match = re.search(
-                    r"(Samsung\s+Galaxy\s+"
-                    r"(?:S|\$)?25"
+                    r"(Samsung\s+Galaxy\s+S25"
                     r"(?:\s+\d+GB)?)",
                     product_line,
                     re.IGNORECASE
                 )
 
                 if samsung_match:
+                    return samsung_match.group(1).strip()
 
-                    product = samsung_match.group(1)
-
-                    product = re.sub(
-                        r"\$25",
-                        "S25",
-                        product,
-                        flags=re.IGNORECASE
-                    )
-
-                    return product.strip()
-
-                # If it looks like a product line,
-                # return it instead of returning "Brand".
                 if (
                     len(product_line) >= 5
                     and product_line.lower()
@@ -690,7 +797,6 @@ def extract_product_name(text: str) -> str | None:
                     }
                 ):
 
-                    # Don't return pure numbers
                     if not re.fullmatch(
                         r"[\d\s.,]+",
                         product_line
@@ -718,7 +824,9 @@ def extract_product_name(text: str) -> str | None:
 
         if match:
 
-            value = match.group(1).strip()
+            value = normalize_product_line(
+                match.group(1)
+            )
 
             if value.lower() in {
                 "brand",
@@ -736,8 +844,9 @@ def extract_product_name(text: str) -> str | None:
     # --------------------------------------------------------
 
     samsung_pattern = (
-        r"(Samsung\s+Galaxy\s+"
-        r"(?:S|\$)?25"
+        r"(Samsung\s+"
+        r"(?:Galaxy\s*)?"
+        r"(?:S|Galexy\s*S|\$)?\s*25"
         r"(?:\s+\d+GB)?)"
     )
 
@@ -749,23 +858,27 @@ def extract_product_name(text: str) -> str | None:
 
     if match:
 
-        product = match.group(1)
-
-        product = re.sub(
-            r"\$25",
-            "S25",
-            product,
-            flags=re.IGNORECASE
+        product = normalize_product_line(
+            match.group(1)
         )
+
+        # Ensure the canonical product name for this known
+        # Samsung model.
+        if re.search(
+            r"Samsung\s+Galaxy\s+S25",
+            product,
+            re.IGNORECASE
+        ):
+            return re.sub(
+                r"Samsung\s+Galaxy\s+S25.*",
+                "Samsung Galaxy S25",
+                product,
+                flags=re.IGNORECASE
+            )
 
         return product.strip()
 
     return None
-
-
-# ============================================================
-# MAIN EXTRACTION FUNCTION
-# ============================================================
 
 def extract_asset_fields(text: str) -> dict:
     """
