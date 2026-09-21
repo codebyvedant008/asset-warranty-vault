@@ -2200,7 +2200,7 @@ getElement(
 
 
             const extracted =
-                data.extracted_data ||
+                data.extracted_fields ||
                 {};
 
 
